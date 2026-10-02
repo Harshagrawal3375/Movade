@@ -11,10 +11,9 @@ export const metadata: Metadata = {
 export default function BookingConfirmedPage({
   searchParams,
 }: {
-  searchParams?: { booking?: string; payment?: string };
+  searchParams?: { booking?: string };
 }) {
   const bookingId = searchParams?.booking;
-  const paymentId = searchParams?.payment;
   return (
     <>
       <Navbar />
@@ -32,27 +31,19 @@ export default function BookingConfirmedPage({
             </svg>
           </span>
           <h1 className="mt-6 font-display text-3xl font-bold text-text-primary">
-            {paymentId ? "Payment successful!" : "Booking request received!"}
+            Booking request received!
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-text-muted">
-            {paymentId
-              ? "Your payment went through and your booking is confirmed. Our team will email your itinerary and next steps shortly."
-              : "Thanks for booking with Movade. Our team is reviewing your request and will confirm availability within one business day — you'll receive an email with your itinerary and next steps."}
+            Thanks for booking with Movade. Our team is reviewing your request and
+            will confirm availability within one business day — you&apos;ll receive
+            an email with your itinerary and next steps.
           </p>
-          {(bookingId || paymentId) && (
+          {bookingId && (
             <dl className="mt-6 space-y-2 rounded-2xl border border-border-subtle bg-neutral-50 p-4 text-left text-sm">
-              {bookingId && (
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-text-muted">Booking ID</dt>
-                  <dd className="font-mono font-medium text-text-primary">{bookingId}</dd>
-                </div>
-              )}
-              {paymentId && (
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-text-muted">Payment ID</dt>
-                  <dd className="font-mono font-medium text-text-primary">{paymentId}</dd>
-                </div>
-              )}
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-text-muted">Booking ID</dt>
+                <dd className="font-mono font-medium text-text-primary">{bookingId}</dd>
+              </div>
             </dl>
           )}
 

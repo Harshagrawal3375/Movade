@@ -253,7 +253,6 @@ export default function ConstellationTestimonials() {
                     src={t.photo}
                     alt={t.name}
                     fill
-                    priority
                     sizes="64px"
                     style={{ objectPosition: t.objectPos }}
                     className="object-cover"

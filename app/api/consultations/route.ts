@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStore, updateStore, nextId } from "@/lib/db";
+import { createConsultation, listConsultations } from "@/lib/repo";
+import { getCurrentUser } from "@/lib/auth-server";
 import type { Consultation } from "@/lib/types";
 
 export async function GET() {
-  const store = await getStore();
-  return NextResponse.json({ consultations: store.consultations });
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+  const consultations = await listConsultations();
+  return NextResponse.json({ consultations });
 }
 
 export async function POST(request: NextRequest) {
@@ -23,24 +28,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Please share a rough budget." }, { status: 400 });
   }
 
-  await (async () => {
-    const store = await getStore();
-    const id = await nextId(store.consultations, "cs");
-    const consultation: Consultation = {
-      id,
-      name: body.name!.trim(),
-      email: body.email!.trim().toLowerCase(),
-      phone: body.phone?.trim() || undefined,
-      destination: body.destination!.trim(),
-      budget: body.budget!.trim(),
-      message: body.message?.trim() || undefined,
-      createdAt: new Date().toISOString(),
-      status: "pending",
-    };
-    await updateStore((data) => {
-      data.consultations.push(consultation);
-    });
-  })();
+  await createConsultation({
+    name: body.name!.trim(),
+    email: body.email!.trim().toLowerCase(),
+    phone: body.phone?.trim() || undefined,
+    destination: body.destination!.trim(),
+    budget: body.budget!.trim(),
+    message: body.message?.trim() || undefined,
+  });
 
   return NextResponse.json({ ok: true }, { status: 201 });
 }

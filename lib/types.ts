@@ -98,11 +98,6 @@ export interface Booking {
   emergencyContactPhone?: string;
   specialRequests?: string;
   notes?: string;
-  // ── Payments (Razorpay, reserve-then-pay) ──
-  razorpayOrderId?: string;
-  razorpayPaymentId?: string;
-  amountPaid?: number;
-  paidAt?: string;
   createdAt: string;
   status: "pending" | "confirmed";
 }
@@ -129,8 +124,32 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   passwordHash: string;
   salt: string;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
+  createdAt: string;
+}
+
+export interface OtpCode {
+  id: string;
+  /** normalized identifier: lowercase email or normalized phone digits */
+  identifier: string;
+  channel: "email" | "phone";
+  codeHash: string;
+  purpose: "signup" | "login";
+  attempts: number;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface PasswordResetToken {
+  id: string;
+  userId: string;
+  email: string;
+  tokenHash: string;
+  expiresAt: string;
   createdAt: string;
 }
 
@@ -138,4 +157,7 @@ export interface PublicUser {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
 }

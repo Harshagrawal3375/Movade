@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStore, updateStore } from "@/lib/db";
-import {
-  hashPassword,
-  setSessionCookie,
-  createSessionToken,
-  serializeUser,
-} from "@/lib/auth-server";
+import { createUser, findUserByEmail, newId } from "@/lib/repo";
+import { hashPassword } from "@/lib/auth-server";
+import { normalizeEmail } from "@/lib/otp";
+import { issueOtp } from "@/lib/otp-service";
 import type { User } from "@/lib/types";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * POST /api/auth/signup { name, email, password }
+ * Creates an UNVERIFIED account and sends a 6-digit code to the real
+ * inbox (SMTP/Gmail). Client then calls /api/auth/verify-signup.
+ */
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as {
     name?: string;
@@ -18,7 +20,7 @@ export async function POST(request: NextRequest) {
   } | null;
 
   const name = body?.name?.trim();
-  const email = body?.email?.trim().toLowerCase();
+  const email = body?.email ? normalizeEmail(body.email) : "";
   const password = body?.password ?? "";
 
   if (!name) {
@@ -34,30 +36,79 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const store = await getStore();
-  if (store.users.some((u) => u.email === email)) {
+  const existing = await findUserByEmail(email);
+  if (existing) {
+    // Already verified → normal duplicate error.
+    if (existing.emailVerified ?? true) {
+      return NextResponse.json(
+        { error: "An account with this email already exists. Try logging in." },
+        { status: 409 }
+      );
+    }
+    // Unverified → resend the code instead of creating a duplicate.
+    try {
+      const result = await issueOtp(email, "signup");
+      return NextResponse.json(
+        {
+          needVerification: true,
+          email,
+          resent: true,
+          devCode: result.devCode,
+        },
+        { status: 200 }
+      );
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Could not send code." },
+        { status: 429 }
+      );
+    }
+  }
+
+  const { salt, hash } = hashPassword(password);
+  const user: User = {
+    id: newId("u"),
+    name,
+    email,
+    passwordHash: hash,
+    salt,
+    emailVerified: false,
+    phoneVerified: false,
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    await createUser(user);
+  } catch {
     return NextResponse.json(
       { error: "An account with this email already exists." },
       { status: 409 }
     );
   }
 
-  const created = await (async () => {
-    const { salt, hash } = hashPassword(password);
-    const user: User = {
-      id: `u-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      email: email!,
-      passwordHash: hash,
-      salt,
-      createdAt: new Date().toISOString(),
-    };
-    await updateStore((data) => {
-      data.users.push(user);
-    });
-    return user;
-  })();
-
-  setSessionCookie(createSessionToken(created.id));
-  return NextResponse.json({ user: serializeUser(created) }, { status: 201 });
+  try {
+    const emailResult = await issueOtp(email, "signup");
+    return NextResponse.json(
+      {
+        needVerification: true,
+        email,
+        devCode: emailResult.devCode,
+      },
+      { status: 201 }
+    );
+  } catch (err) {
+    // Account exists but the email failed (bad SMTP, network, throttling).
+    // Surface it so the UI can show a resend option instead of failing silently.
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error
+            ? err.message
+            : "Account created but the verification email failed. Tap resend to try again.",
+        needVerification: true,
+        email,
+        otpFailed: true,
+      },
+      { status: 201 }
+    );
+  }
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStore, updateStore } from "@/lib/db";
+import { createTestimonial, listTestimonials } from "@/lib/repo";
 import type { Testimonial } from "@/lib/types";
 
 const MIN_SPACING = 92;
@@ -38,8 +38,8 @@ function findFreePosition(existing: Pick<Testimonial, "x" | "y">[]): {
 }
 
 export async function GET() {
-  const store = await getStore();
-  return NextResponse.json({ testimonials: store.testimonials });
+  const testimonials = await listTestimonials();
+  return NextResponse.json({ testimonials });
 }
 
 export async function POST(request: NextRequest) {
@@ -62,21 +62,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await updateStore(async (data) => {
-    const pos = findFreePosition(data.testimonials);
-    const testimonial: Testimonial = {
-      id: Math.max(0, ...data.testimonials.map((t) => t.id)) + 1,
-      name: body.name!.trim(),
-      role: body.role?.trim() || "New Traveler",
-      quote: body.quote!.trim(),
-      photo: "/review/20303b5f6f2cf43506bb6d88e4ad0d93.jpg",
-      x: pos.x,
-      y: pos.y,
-      objectPos: "50% 20%",
-      duration: 7,
-    };
-    data.testimonials.push(testimonial);
-  });
+  const existing = await listTestimonials();
+  const pos = findFreePosition(existing);
+  const testimonial: Testimonial = {
+    id: Math.max(0, ...existing.map((t) => t.id)) + 1,
+    name: body.name!.trim(),
+    role: body.role?.trim() || "New Traveler",
+    quote: body.quote!.trim(),
+    photo: "/review/20303b5f6f2cf43506bb6d88e4ad0d93.jpg",
+    x: pos.x,
+    y: pos.y,
+    objectPos: "50% 20%",
+    duration: 7,
+  };
+  await createTestimonial(testimonial);
 
   return NextResponse.json({ ok: true }, { status: 201 });
 }

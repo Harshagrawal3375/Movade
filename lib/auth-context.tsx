@@ -8,15 +8,6 @@ import {
   ReactNode,
   useCallback,
 } from "react";
-import { auth, hasFirebaseConfig } from "@/lib/firebase";
-import {
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  updateProfile,
-  User as FirebaseUser,
-} from "firebase/auth";
 import * as api from "@/lib/api";
 import type { PublicUser } from "@/lib/types";
 
@@ -24,19 +15,35 @@ export interface SessionUser extends PublicUser {
   displayName?: string;
 }
 
+interface SignupResult {
+  needVerification: boolean;
+  email: string;
+  devCode?: string;
+  error?: string;
+  otpFailed?: boolean;
+}
+
 interface AuthContextValue {
   user: SessionUser | null;
   loading: boolean;
-  signup: (name: string, email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string) => Promise<SignupResult>;
+  verifySignup: (email: string, code: string) => Promise<void>;
+  resendSignupCode: (email: string) => Promise<string | undefined>;
   login: (email: string, password: string) => Promise<void>;
+  sendLoginCode: (email: string) => Promise<string | undefined>;
+  verifyLoginCode: (email: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
-  signup: async () => {},
+  signup: async () => ({ needVerification: false, email: "" }),
+  verifySignup: async () => {},
+  resendSignupCode: async () => undefined,
   login: async () => {},
+  sendLoginCode: async () => undefined,
+  verifyLoginCode: async () => {},
   logout: async () => {},
 });
 
@@ -48,33 +55,12 @@ function toSessionUser(u: PublicUser): SessionUser {
   return { ...u, displayName: u.name };
 }
 
-function fromFirebaseUser(u: FirebaseUser): SessionUser {
-  return {
-    id: u.uid,
-    name: u.displayName ?? u.email ?? "Traveler",
-    email: u.email ?? "",
-    displayName: u.displayName ?? undefined,
-  };
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-
-    if (hasFirebaseConfig && auth) {
-      const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-        if (cancelled) return;
-        setUser(firebaseUser ? fromFirebaseUser(firebaseUser) : null);
-        setLoading(false);
-      });
-      return () => {
-        cancelled = true;
-        unsubscribe();
-      };
-    }
 
     api
       .fetchMe()
@@ -94,39 +80,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signup = useCallback(async (name: string, email: string, password: string) => {
-    if (hasFirebaseConfig && auth) {
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(credential.user, { displayName: name });
-      setUser(fromFirebaseUser(credential.user));
-      return;
-    }
-    const { user: created } = await api.signUp(name, email, password);
-    setUser(toSessionUser(created));
+  const signup = useCallback(
+    async (name: string, email: string, password: string) => {
+      const res = await api.signUp(name, email, password);
+      if (res.user) setUser(toSessionUser(res.user));
+      return {
+        needVerification: res.needVerification ?? false,
+        email: res.email ?? email.trim().toLowerCase(),
+        devCode: res.devCode,
+        error: res.error,
+        otpFailed: res.otpFailed,
+      };
+    },
+    []
+  );
+
+  const verifySignup = useCallback(async (email: string, code: string) => {
+    const { user: verified } = await api.verifySignup(email, code);
+    setUser(toSessionUser(verified));
+  }, []);
+
+  const resendSignupCode = useCallback(async (email: string) => {
+    const res = await api.resendSignupCode(email);
+    return res.devCode;
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    if (hasFirebaseConfig && auth) {
-      const credential = await signInWithEmailAndPassword(auth, email, password);
-      setUser(fromFirebaseUser(credential.user));
-      return;
-    }
     const { user: loggedIn } = await api.signIn(email, password);
     setUser(toSessionUser(loggedIn));
   }, []);
 
+  const sendLoginCode = useCallback(async (email: string) => {
+    const res = await api.sendLoginCode(email);
+    return res.devCode;
+  }, []);
+
+  const verifyLoginCode = useCallback(async (email: string, code: string) => {
+    const { user: loggedIn } = await api.verifyLoginCode(email, code);
+    setUser(toSessionUser(loggedIn));
+  }, []);
+
   const logout = useCallback(async () => {
-    if (hasFirebaseConfig && auth) {
-      await signOut(auth);
-      setUser(null);
-      return;
-    }
     await api.signOut();
     setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signup, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        signup,
+        verifySignup,
+        resendSignupCode,
+        login,
+        sendLoginCode,
+        verifyLoginCode,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

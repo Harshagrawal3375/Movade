@@ -1,7 +1,7 @@
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import type { PublicUser, User } from "@/lib/types";
-import { getStore } from "@/lib/db";
+import { findUserById } from "@/lib/repo";
 
 const SESSION_COOKIE = "movade_session";
 const DEV_FALLBACK_SECRET = "movade-dev-secret-change-me";
@@ -96,12 +96,32 @@ export async function getCurrentUser(): Promise<PublicUser | null> {
   if (!token) return null;
   const payload = verify(token);
   if (!payload) return null;
-  const store = await getStore();
-  const user = store.users.find((u) => u.id === payload.uid);
+  const user = await findUserById(payload.uid);
   if (!user) return null;
   return serializeUser(user);
 }
 
 export function serializeUser(user: User): PublicUser {
-  return { id: user.id, name: user.name, email: user.email };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    // Users created before verification existed have no flag → treat as verified.
+    emailVerified: user.emailVerified ?? true,
+    phoneVerified: user.phoneVerified ?? false,
+  };
+}
+
+// ── Password reset tokens (single-use, 1h expiry, sha256-hashed at rest) ──
+
+export const RESET_TOKEN_TTL_MS = 1000 * 60 * 60;
+
+export function createResetToken(): { token: string; tokenHash: string } {
+  const token = randomBytes(32).toString("hex");
+  return { token, tokenHash: hashResetToken(token) };
+}
+
+export function hashResetToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }

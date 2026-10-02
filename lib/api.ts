@@ -12,20 +12,56 @@ async function api<T>(
     },
   });
   const data = (await res.json().catch(() => null)) as
-    | (T & { error?: string })
+    | (T & { error?: string; code?: string; devCode?: string })
     | null;
 
   if (!res.ok || !data) {
     const message = data?.error ?? `Request failed (${res.status})`;
-    throw new Error(message);
+    const err = new Error(message) as Error & {
+      code?: string;
+      devCode?: string;
+      status?: number;
+    };
+    if (data?.code) err.code = data.code;
+    if (data?.devCode) err.devCode = data.devCode;
+    err.status = res.status;
+    throw err;
   }
   return data;
 }
 
 export function signUp(name: string, email: string, password: string) {
-  return api<{ user: PublicUser }>("/api/auth/signup", {
+  return api<{ user?: PublicUser; needVerification?: boolean; email?: string; devCode?: string; resent?: boolean; error?: string; otpFailed?: boolean }>("/api/auth/signup", {
     method: "POST",
     body: JSON.stringify({ name, email, password }),
+  });
+}
+
+export function verifySignup(email: string, code: string) {
+  return api<{ user: PublicUser }>("/api/auth/verify-signup", {
+    method: "POST",
+    body: JSON.stringify({ email, code }),
+  });
+}
+
+export function resendSignupCode(email: string) {
+  return api<{ ok: true; devCode?: string }>("/api/auth/resend-signup-code", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function sendLoginCode(email: string) {
+  return api<{ ok: true; devCode?: string }>("/api/auth/send-login-code", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function verifyLoginCode(email: string, code: string) {
+  return api<{ user: PublicUser }>("/api/auth/verify-login-code", {
+    method: "POST",
+    body: JSON.stringify({ email, code }),
   });
 }
 
@@ -42,6 +78,26 @@ export function signOut() {
 
 export function fetchMe() {
   return api<{ user: PublicUser | null }>("/api/auth/me");
+}
+
+export function forgotPassword(email: string) {
+  return api<{ ok: true; resetUrl?: string }>("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword(token: string, password: string) {
+  return api<{ ok: true }>("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
+}
+
+export function validateResetToken(token: string) {
+  return api<{ valid: boolean }>(
+    `/api/auth/reset-password?token=${encodeURIComponent(token)}`
+  );
 }
 
 export function createBooking(payload: {
@@ -80,34 +136,6 @@ export function createBooking(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
-}
-
-export function createPaymentOrder(bookingId: string) {
-  return api<{
-    ok: true;
-    orderId: string;
-    amount: number;
-    currency: string;
-    keyId: string;
-  }>("/api/payments/create-order", {
-    method: "POST",
-    body: JSON.stringify({ bookingId }),
-  });
-}
-
-export function verifyPayment(payload: {
-  bookingId: string;
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-}) {
-  return api<{ ok: true; bookingId: string; paymentId: string }>(
-    "/api/payments/verify",
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }
-  );
 }
 
 export function createConsultation(payload: {

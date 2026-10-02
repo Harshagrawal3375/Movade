@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, MouseEvent, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { motion, useMotionValue, useTransform, useSpring } from "framer-motion";
 import { gsap } from "@/lib/gsap-config";
 import { Chip } from "@/components/ui/pill";
@@ -408,7 +409,7 @@ function ResultRow({
       className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-black/[0.04]"
     >
       <span className="relative block h-12 w-12 shrink-0 overflow-hidden rounded-lg">
-        <img src={image} alt="" className="h-full w-full object-cover" />
+        <Image src={image} alt={title} fill sizes="48px" className="object-cover" />
       </span>
       <span className="min-w-0">
         <span className="block truncate text-sm font-semibold text-text-primary">

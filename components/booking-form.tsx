@@ -33,49 +33,6 @@ const diffDays = (start: string, end: string): number => {
 const inr = (n: number) =>
   `₹${Math.round(n).toLocaleString("en-IN")}`;
 
-// ── Razorpay Checkout (loaded on demand, only when paying) ──────────
-interface RazorpaySuccessResponse {
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-}
-
-interface RazorpayCheckoutOptions {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id: string;
-  prefill: { name: string; email: string; contact: string };
-  theme: { color: string };
-  handler: (response: RazorpaySuccessResponse) => void;
-  modal?: { ondismiss?: () => void };
-}
-
-interface RazorpayCheckoutInstance {
-  open: () => void;
-  on: (event: string, cb: () => void) => void;
-}
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: RazorpayCheckoutOptions) => RazorpayCheckoutInstance;
-  }
-}
-
-function loadRazorpayScript(): Promise<void> {
-  if (typeof window !== "undefined" && window.Razorpay) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Razorpay checkout could not be loaded. Check your connection and retry."));
-    document.body.appendChild(script);
-  });
-}
-
 // ── Exact option sets required by spec ──────────────────────────────
 const DESTINATION_OPTIONS = [
   "Manali",
@@ -212,11 +169,6 @@ export default function BookingForm({ payload }: { payload: BookingPayload }) {
 
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  // ── 5. Payment (reserve-then-pay) ──
-  const [reservedId, setReservedId] = useState<string | null>(null);
-  const [paying, setPaying] = useState(false);
-  const [payError, setPayError] = useState("");
 
   useEffect(() => {
     setError("");
@@ -358,65 +310,12 @@ export default function BookingForm({ payload }: { payload: BookingPayload }) {
         roomType,
         estimatedFare: Math.round(fare.total),
       });
-      setReservedId(res.id);
-      showToast(
-        `Booking reserved — pay ${inr(fare.total)} to confirm it.`,
-        "success",
-        "🎟️"
-      );
+      showToast("Booking request received!", "success", "🎟️");
+      router.push(`/booking-confirmed?booking=${res.id}`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handlePay = async () => {
-    if (!reservedId) return;
-    setPayError("");
-    setPaying(true);
-
-    try {
-      // Step 2 — order: server creates a Razorpay order for the booking.
-      const order = await api.createPaymentOrder(reservedId);
-      await loadRazorpayScript();
-      if (!window.Razorpay) {
-        throw new Error("Razorpay checkout could not be loaded. Please retry.");
-      }
-
-      // Step 3 — checkout: Razorpay popup (UPI / card / netbanking).
-      const rzp = new window.Razorpay({
-        key: order.keyId,
-        amount: order.amount,
-        currency: order.currency,
-        name: "Movade",
-        description: `${payload.packageTitle} · ${destination}`,
-        order_id: order.orderId,
-        prefill: { name: name.trim(), email: email.trim(), contact: phone.trim() },
-        theme: { color: "#16a34a" },
-        handler: (resp: RazorpaySuccessResponse) => {
-          // Step 4 — verify: server checks the signature, then confirms.
-          api
-            .verifyPayment({ bookingId: reservedId, ...resp })
-            .then((v) => {
-              showToast("Payment successful — booking confirmed!", "success", "🎟️");
-              router.push(`/booking-confirmed?booking=${v.bookingId}&payment=${v.paymentId}`);
-            })
-            .catch((err: Error) => {
-              setPayError(err.message);
-              setPaying(false);
-            });
-        },
-        modal: { ondismiss: () => setPaying(false) },
-      });
-      rzp.on("payment.failed", () => {
-        setPayError("Payment failed — please retry. Failed attempts are not charged.");
-        setPaying(false);
-      });
-      rzp.open();
-    } catch (err) {
-      setPayError((err as Error).message);
-      setPaying(false);
     }
   };
 
@@ -704,49 +603,17 @@ export default function BookingForm({ payload }: { payload: BookingPayload }) {
         </p>
       )}
 
-      {!reservedId ? (
-        <button
-          type="submit"
-          disabled={submitting}
-          className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent-green px-6 py-3.5 text-sm font-semibold text-text-primary transition-transform duration-300 hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting
-            ? "Reserving your booking…"
-            : fareReady
-              ? `Reserve booking · ${inr(fare.total)}`
-              : "Reserve booking"}
-        </button>
-      ) : (
-        <div>
-          <h3 className={sectionCls}>5. Payment</h3>
-          <div className="mt-3 rounded-2xl border border-accent-green/40 bg-accent-green/5 p-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-text-muted">Booking ID</span>
-              <span className="font-mono font-medium text-text-primary">{reservedId}</span>
-            </div>
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-sm font-semibold text-text-primary">Amount payable</span>
-              <span className="text-lg font-bold text-text-primary">{inr(fare.total)}</span>
-            </div>
-            {payError && (
-              <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                {payError}
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={handlePay}
-              disabled={paying}
-              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent-green px-6 py-3.5 text-sm font-semibold text-text-primary transition-transform duration-300 hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {paying ? "Opening secure payment…" : `Pay ${inr(fare.total)} securely`}
-            </button>
-            <p className="mt-2 text-center text-xs leading-relaxed text-text-muted">
-              UPI / Card / Netbanking via Razorpay. Booking confirms only after successful payment.
-            </p>
-          </div>
-        </div>
-      )}
+      <button
+        type="submit"
+        disabled={submitting}
+        className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-full bg-accent-green px-6 py-3.5 text-sm font-semibold text-text-primary transition-transform duration-300 hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {submitting
+          ? "Submitting your request…"
+          : fareReady
+            ? `Request booking · ${inr(fare.total)}`
+            : "Request booking"}
+      </button>
     </form>
   );
 }

@@ -10,6 +10,8 @@ import type {
   Subscriber,
   Testimonial,
   User,
+  PasswordResetToken,
+  OtpCode,
 } from "@/lib/types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -25,6 +27,8 @@ export interface AppData {
   consultations: Consultation[];
   subscribers: Subscriber[];
   users: User[];
+  passwordResets: PasswordResetToken[];
+  otpCodes: OtpCode[];
 }
 
 const seedData: AppData = {
@@ -620,7 +624,14 @@ const seedData: AppData = {
   consultations: [],
   subscribers: [],
   users: [],
+  passwordResets: [],
+  otpCodes: [],
 };
+
+/** Static seed testimonials (ship in code; user-added ones live in the store). */
+export function getSeedTestimonials(): Testimonial[] {
+  return structuredClone(seedData.testimonials);
+}
 
 async function readStore(): Promise<AppData> {
   try {
@@ -638,6 +649,8 @@ async function readStore(): Promise<AppData> {
       consultations: parsed.consultations ?? [],
       subscribers: parsed.subscribers ?? [],
       users: parsed.users ?? [],
+      passwordResets: parsed.passwordResets ?? [],
+      otpCodes: parsed.otpCodes ?? [],
     };
   } catch {
     return structuredClone(seedData);

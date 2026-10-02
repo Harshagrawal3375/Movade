@@ -1,7 +1,7 @@
 # Movade — Travel Agency (Next.js 14)
 
 Personalized travel booking site: destinations, properties, experiences,
-bookings with Razorpay (reserve-then-pay), consultations, testimonials.
+booking requests, consultations, testimonials.
 
 ## Quick start
 
@@ -17,11 +17,15 @@ npm run dev                  # http://localhost:3000
 |---|---|---|
 | `AUTH_SECRET` | Yes in prod | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `NEXT_PUBLIC_SITE_URL` | For sitemap/robots | Your deployed URL, e.g. `https://movade.example.com` |
-| `NEXT_PUBLIC_FIREBASE_*` | Optional (Firebase auth path) | Firebase Console → Project Settings → Your apps |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` / `NEXT_PUBLIC_RAZORPAY_KEY_ID` | Optional (payments) | Razorpay Dashboard → Settings → API Keys (Test Mode) |
+| `MONGODB_URI` / `MONGODB_DB` | Yes in prod (MongoDB Atlas) | https://cloud.mongodb.com → Connect → Drivers → Node.js |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | Yes for forgot-password emails | Any SMTP server. Gmail: `smtp.gmail.com:587` + an [App Password](https://myaccount.google.com/apppasswords) (regular Gmail passwords don't work) |
+
+Without SMTP configured, forgot-password still works locally: the reset link
+is logged server-side and shown in the UI in dev only.
 
 Without Firebase keys the app falls back to the built-in cookie auth.
-Without Razorpay keys `/api/payments/*` returns `503` with setup instructions.
+Without `MONGODB_URI` the app uses the local JSON store (`data/app-data.json`,
+gitignored) — fine for local dev, does not persist on serverless hosts.
 
 ## Scripts
 
@@ -33,25 +37,24 @@ npm run lint       # eslint
 npm run typecheck  # tsc --noEmit
 ```
 
-## Data store (current limitation)
+## Data store
 
-`lib/db.ts` uses `data/app-data.json` (gitignored) with seed data in code.
-Works for local dev only — it is **not safe for serverless / multi-instance
-prod** (read-only FS, read-modify-write races). Next step: migrate to
-Postgres/Mongo/Firestore + Prisma/Drizzle. See `lib/db.ts:625`.
+Mutable data (users, bookings, consultations, subscribers, user testimonials)
+lives in MongoDB when `MONGODB_URI` is set, otherwise in `data/app-data.json`
+(local dev only — gitignored, no cross-instance persistence). Static catalog
+(destinations, properties, spots, blogs, seed testimonials) ships in code
+(`lib/db.ts`). Repository: `lib/repo.ts`, client: `lib/mongo.ts`.
 
 ## Security notes
 
 - `GET /api/bookings` requires login and returns only the caller's own bookings.
 - `AUTH_SECRET` must be set in production or the server throws on boot.
-- Razorpay webhook/signature uses `timingSafeEqual`; booking flips
-  `pending → confirmed` only after signature verification.
 - Security headers (`nosniff`, `DENY`, `Referrer-Policy`) in `next.config.mjs`.
 
 ## Project layout
 
 - `app/` — routes + `not-found/error/loading/robots/sitemap/manifest`
 - `components/` — landing sections, booking forms, modals
-- `lib/` — `db`, `auth-server`, `firebase`, `razorpay`, `api` client
+- `lib/` — `db`, `repo`, `mongo`, `auth-server`, `firebase`, `api` client
 - `data/` — runtime JSON store (local only, ignored by git)
 - `public/` — images, preloader video
