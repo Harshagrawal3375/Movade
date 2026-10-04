@@ -55,8 +55,7 @@ export default function SignupPage() {
   const confirmTouched = confirm.length > 0;
   const passwordsMatch = confirmTouched && passwordOk && password === confirm;
   const passwordsMismatch = confirmTouched && password !== confirm;
-  const detailsInvalid =
-    password.length < 6 || (confirmTouched && password !== confirm);
+  const detailsInvalid = password.length < 6 || passwordsMismatch;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
